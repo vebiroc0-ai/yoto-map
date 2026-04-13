@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>用途地域マップ - 江南市・岩倉市・北名古屋市</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body { font-family: -apple-system, 'Hiragino Sans', 'Meiryo', sans-serif; }
+#map { width: 100%; height: 100%; }
+
+/* --- Collapsible panels --- */
+.panel-toggle {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  font-size: 20px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Locate button (shown on all screens) --- */
+#locate-btn {
+  display: flex;
+  position: fixed;
+  z-index: 1000;
+  bottom: 16px;
+  left: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: none;
+  background: white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  font-size: 22px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+#locate-btn:active { background: #e8e8e8; }
+#locate-btn.tracking { background: #e3f2fd; }
+#locate-btn.tracking svg path { fill: #1976d2; }
+
+/* Location pulse animation */
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(3); opacity: 0; }
+}
+.location-pulse {
+  width: 12px;
+  height: 12px;
+  background: rgba(25, 118, 210, 0.3);
+  border-radius: 50%;
+  animation: pulse 2s ease-out infinite;
+}
+
+/* --- Legend --- */
+.legend-wrap {
+  position: relative;
+}
+.legend {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  line-height: 1.6;
+  max-height: 70vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.legend h4 {
+  margin-bottom: 8px;
+  font-size: 14px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+.legend-item.disabled { opacity: 0.35; }
+.legend-color {
+  width: 20px;
+  height: 16px;
+  margin-right: 8px;
+  border: 1px solid rgba(0,0,0,0.3);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* --- Info panel --- */
+.info-panel {
+  background: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  font-size: 14px;
+  min-width: 180px;
+}
+.info-panel h4 {
+  margin-bottom: 6px;
+  font-size: 15px;
+  color: #333;
+}
+.info-panel table { border-collapse: collapse; width: 100%; }
+.info-panel td { padding: 3px 8px 3px 0; }
+.info-panel td:first-child { font-weight: bold; color: #555; white-space: nowrap; }
+
+/* --- City filter --- */
+.city-filter {
+  background: white;
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  font-size: 14px;
+}
+.city-filter h4 {
+  margin-bottom: 6px;
+  font-size: 14px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+}
+.city-filter label {
+  display: flex;
+  align-items: center;
+  padding: 5px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.city-filter input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+}
+
+/* --- Mobile bottom sheet for info --- */
+.mobile-info {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  background: white;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
+  padding: 16px 20px 24px;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+}
+.mobile-info.show { transform: translateY(0); }
+.mobile-info .drag-handle {
+  width: 40px;
+  height: 4px;
+  background: #ccc;
+  border-radius: 2px;
+  margin: 0 auto 12px;
+}
+.mobile-info h4 { font-size: 16px; margin-bottom: 8px; }
+.mobile-info table { width: 100%; font-size: 14px; }
+.mobile-info td { padding: 4px 8px 4px 0; }
+.mobile-info td:first-child { font-weight: bold; color: #555; }
+.mobile-info .close-btn {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #888;
+  padding: 4px;
+}
+
+/* --- Mobile styles --- */
+@media (max-width: 768px) {
+  .panel-toggle { display: flex; }
+
+  #legend-toggle {
+    bottom: 16px;
+    right: 16px;
+  }
+  #filter-toggle {
+    top: 80px;
+    left: 10px;
+  }
+  #locate-btn {
+    bottom: 16px;
+    left: 16px;
+  }
+
+  .leaflet-bottom.leaflet-right .legend-wrap .legend {
+    display: none;
+  }
+  .leaflet-bottom.leaflet-right .legend-wrap.open .legend {
+    display: block;
+    position: fixed;
+    bottom: 64px;
+    right: 10px;
+    max-height: 50vh;
+    max-width: 200px;
+    z-index: 1002;
+  }
+
+  .leaflet-top.leaflet-left .city-filter {
+    display: none;
+  }
+  .leaflet-top.leaflet-left .city-filter.open {
+    display: block;
+    position: fixed;
+    top: 128px;
+    left: 10px;
+    z-index: 1002;
+  }
+
+  /* Hide desktop info panel on mobile */
+  .info-panel { display: none !important; }
+  .mobile-info { display: block; }
+
+  /* Larger touch targets */
+  .legend-item { padding: 6px 2px; font-size: 13px; }
+  .legend-color { width: 22px; height: 18px; }
+  .city-filter label { padding: 8px 0; font-size: 15px; }
+  .city-filter input[type="checkbox"] { width: 20px; height: 20px; }
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- Mobile toggle buttons -->
+<button id="legend-toggle" class="panel-toggle" aria-label="凡例を開く">凡</button>
+<button id="filter-toggle" class="panel-toggle" aria-label="フィルタを開く">市</button>
+<button id="locate-btn" aria-label="現在地を表示">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="none">
+    <path d="M12 2C12 2 12 2 12 2L12 4.04C7.61 4.52 4.52 7.61 4.04 12H2V12H2C2 12 2 12 2 12H4.04C4.52 16.39 7.61 19.48 12 19.96V22H12C12 22 12 22 12 22V19.96C16.39 19.48 19.48 16.39 19.96 12H22V12C22 12 22 12 22 12H19.96C19.48 7.61 16.39 4.52 12 4.04V2ZM12 6.04V6C12 6 12 6 12 6V6.04C15.28 6.5 17.5 8.72 17.96 12H18C18 12 18 12 18 12H17.96C17.5 15.28 15.28 17.5 12 17.96V18C12 18 12 18 12 18V17.96C8.72 17.5 6.5 15.28 6.04 12H6C6 12 6 12 6 12H6.04C6.5 8.72 8.72 6.5 12 6.04Z" fill="#555"/>
+    <circle cx="12" cy="12" r="3" fill="#555"/>
+  </svg>
+</button>
+
+<!-- Mobile bottom sheet -->
+<div id="mobile-info" class="mobile-info">
+  <div class="drag-handle"></div>
+  <button class="close-btn" id="mobile-info-close" aria-label="閉じる">&times;</button>
+  <div id="mobile-info-content"></div>
+</div>
+
+<script>
+const ZONE_COLORS = {
+  '第一種低層住居専用地域': '#2d8a2d',
+  '第二種低層住居専用地域': '#6dbf6d',
+  '第一種中高層住居専用地域': '#a8d8a8',
+  '第二種中高層住居専用地域': '#c8e8c8',
+  '第一種住居地域': '#ffe066',
+  '第二種住居地域': '#ffd700',
+  '準住居地域': '#ffb347',
+  '近隣商業地域': '#ff8c94',
+  '商業地域': '#ff4444',
+  '準工業地域': '#b19cd9',
+  '工業地域': '#87ceeb',
+  '工業専用地域': '#4682b4'
+};
+
+const isMobile = window.innerWidth <= 768;
+
+const map = L.map('map', {
+  tap: true,
+  touchZoom: true,
+  bounceAtZoomLimits: false
+}).setView([35.33, 136.87], 13);
+
+// Base layers
+const baseLayers = {
+  '地理院 (標準)': L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>',
+    maxZoom: 18
+  }),
+  '地理院 (淡色)': L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>',
+    maxZoom: 18
+  }),
+  '航空写真': L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>',
+    maxZoom: 18
+  }),
+  'OpenStreetMap': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OSM contributors',
+    maxZoom: 19
+  })
+};
+baseLayers['地理院 (淡色)'].addTo(map);
+L.control.layers(baseLayers).addTo(map);
+
+// State
+let geojsonLayer = null;
+let geojsonData = null;
+const activeZones = new Set(Object.keys(ZONE_COLORS));
+const activeCities = new Set(['江南市', '岩倉市', '北名古屋市']);
+
+// Desktop info panel
+const infoControl = L.control({ position: 'topright' });
+infoControl.onAdd = function() {
+  this._div = L.DomUtil.create('div', 'info-panel');
+  this.update();
+  return this._div;
+};
+infoControl.update = function(props) {
+  if (!props) {
+    this._div.innerHTML = '<h4>用途地域情報</h4><p style="color:#888">ポリゴンをクリック</p>';
+    return;
+  }
+  this._div.innerHTML = '<h4>' + props.zone_name + '</h4>' +
+    '<table>' +
+    '<tr><td>市区町村</td><td>' + props.city + '</td></tr>' +
+    '<tr><td>建蔽率</td><td>' + props.building_coverage_ratio + '%</td></tr>' +
+    '<tr><td>容積率</td><td>' + props.floor_area_ratio + '%</td></tr>' +
+    '</table>';
+};
+infoControl.addTo(map);
+
+// Mobile info
+const mobileInfo = document.getElementById('mobile-info');
+const mobileInfoContent = document.getElementById('mobile-info-content');
+document.getElementById('mobile-info-close').addEventListener('click', function() {
+  mobileInfo.classList.remove('show');
+});
+
+function showInfo(props) {
+  if (isMobile) {
+    const color = ZONE_COLORS[props.zone_name] || '#888';
+    mobileInfoContent.innerHTML =
+      '<h4><span style="display:inline-block;width:16px;height:16px;background:' + color +
+      ';border:1px solid rgba(0,0,0,0.3);border-radius:3px;vertical-align:middle;margin-right:6px"></span>' +
+      props.zone_name + '</h4>' +
+      '<table>' +
+      '<tr><td>市区町村</td><td>' + props.city + '</td></tr>' +
+      '<tr><td>建蔽率</td><td>' + props.building_coverage_ratio + '%</td></tr>' +
+      '<tr><td>容積率</td><td>' + props.floor_area_ratio + '%</td></tr>' +
+      '</table>';
+    mobileInfo.classList.add('show');
+  } else {
+    infoControl.update(props);
+  }
+}
+
+// Legend
+const legendControl = L.control({ position: 'bottomright' });
+legendControl.onAdd = function() {
+  const wrap = L.DomUtil.create('div', 'legend-wrap');
+  const div = L.DomUtil.create('div', 'legend', wrap);
+  div.innerHTML = '<h4>用途地域 <small style="color:#888;font-weight:normal">(タップで切替)</small></h4>';
+  for (const [name, color] of Object.entries(ZONE_COLORS)) {
+    const item = L.DomUtil.create('div', 'legend-item', div);
+    item.innerHTML = '<div class="legend-color" style="background:' + color + '"></div>' + name;
+    item.dataset.zone = name;
+    item.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const zone = this.dataset.zone;
+      if (activeZones.has(zone)) {
+        activeZones.delete(zone);
+        this.classList.add('disabled');
+      } else {
+        activeZones.add(zone);
+        this.classList.remove('disabled');
+      }
+      refreshLayer();
+    });
+  }
+  L.DomEvent.disableClickPropagation(wrap);
+  L.DomEvent.disableScrollPropagation(wrap);
+  this._wrap = wrap;
+  return wrap;
+};
+legendControl.addTo(map);
+
+// City filter
+const cityControl = L.control({ position: 'topleft' });
+cityControl.onAdd = function() {
+  const div = L.DomUtil.create('div', 'city-filter');
+  div.innerHTML = '<h4>市区町村</h4>';
+  ['江南市', '岩倉市', '北名古屋市'].forEach(city => {
+    const label = L.DomUtil.create('label', '', div);
+    const cb = L.DomUtil.create('input', '', label);
+    cb.type = 'checkbox';
+    cb.checked = true;
+    cb.value = city;
+    cb.addEventListener('change', function() {
+      if (this.checked) activeCities.add(this.value);
+      else activeCities.delete(this.value);
+      refreshLayer();
+    });
+    label.appendChild(document.createTextNode(' ' + city));
+  });
+  L.DomEvent.disableClickPropagation(div);
+  this._div = div;
+  return div;
+};
+cityControl.addTo(map);
+
+// Mobile toggle buttons
+document.getElementById('legend-toggle').addEventListener('click', function(e) {
+  e.stopPropagation();
+  const wrap = legendControl._wrap;
+  const isOpen = wrap.classList.contains('open');
+  wrap.classList.toggle('open');
+  // Close filter if open
+  if (cityControl._div) cityControl._div.classList.remove('open');
+  this.textContent = isOpen ? '凡' : '×';
+});
+
+document.getElementById('filter-toggle').addEventListener('click', function(e) {
+  e.stopPropagation();
+  const div = cityControl._div;
+  const isOpen = div.classList.contains('open');
+  div.classList.toggle('open');
+  // Close legend if open
+  if (legendControl._wrap) legendControl._wrap.classList.remove('open');
+  document.getElementById('legend-toggle').textContent = '凡';
+  this.textContent = isOpen ? '市' : '×';
+});
+
+// Close panels on map click (mobile)
+map.on('click', function() {
+  if (isMobile) {
+    if (legendControl._wrap) legendControl._wrap.classList.remove('open');
+    if (cityControl._div) cityControl._div.classList.remove('open');
+    document.getElementById('legend-toggle').textContent = '凡';
+    document.getElementById('filter-toggle').textContent = '市';
+  }
+});
+
+function styleFeature(feature) {
+  return {
+    fillColor: ZONE_COLORS[feature.properties.zone_name] || '#888',
+    weight: isMobile ? 0.5 : 1,
+    opacity: 0.8,
+    color: '#333',
+    fillOpacity: 0.5
+  };
+}
+
+function highlightFeature(e) {
+  e.target.setStyle({ weight: 3, color: '#000', fillOpacity: 0.7 });
+  e.target.bringToFront();
+  if (!isMobile) infoControl.update(e.target.feature.properties);
+}
+
+function resetHighlight(e) {
+  geojsonLayer.resetStyle(e.target);
+}
+
+function onEachFeature(feature, layer) {
+  layer.on({
+    mouseover: highlightFeature,
+    mouseout: resetHighlight,
+    click: function(e) {
+      L.DomEvent.stopPropagation(e);
+      showInfo(feature.properties);
+    }
+  });
+}
+
+function refreshLayer() {
+  if (geojsonLayer) map.removeLayer(geojsonLayer);
+  const filtered = {
+    type: 'FeatureCollection',
+    features: geojsonData.features.filter(f =>
+      activeZones.has(f.properties.zone_name) &&
+      activeCities.has(f.properties.city)
+    )
+  };
+  geojsonLayer = L.geoJSON(filtered, {
+    style: styleFeature,
+    onEachFeature: onEachFeature
+  }).addTo(map);
+}
+
+// Load GeoJSON
+fetch('yoto_chiiki.geojson')
+  .then(r => r.json())
+  .then(data => {
+    geojsonData = data;
+    refreshLayer();
+    if (geojsonLayer.getBounds().isValid()) {
+      map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+    }
+  })
+  .catch(err => {
+    alert('GeoJSONの読み込みに失敗しました。\nindex.htmlとyoto_chiiki.geojsonを同じフォルダに置き、Webサーバー経由で開いてください。');
+    console.error(err);
+  });
+
+// --- Geolocation ---
+let locationMarker = null;
+let locationCircle = null;
+let watchId = null;
+let isTracking = false;
+const locateBtn = document.getElementById('locate-btn');
+
+function updateLocationMarker(lat, lng, accuracy) {
+  if (!locationMarker) {
+    locationMarker = L.circleMarker([lat, lng], {
+      radius: 8,
+      fillColor: '#1976d2',
+      fillOpacity: 1,
+      color: 'white',
+      weight: 3
+    }).addTo(map);
+    locationCircle = L.circle([lat, lng], {
+      radius: accuracy,
+      fillColor: '#1976d2',
+      fillOpacity: 0.1,
+      color: '#1976d2',
+      weight: 1
+    }).addTo(map);
+  } else {
+    locationMarker.setLatLng([lat, lng]);
+    locationCircle.setLatLng([lat, lng]);
+    locationCircle.setRadius(accuracy);
+  }
+}
+
+function startTracking() {
+  if (!navigator.geolocation) {
+    alert('お使いのブラウザは位置情報に対応していません。');
+    return;
+  }
+  isTracking = true;
+  locateBtn.classList.add('tracking');
+
+  // Get initial position and zoom to it
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      updateLocationMarker(lat, lng, pos.coords.accuracy);
+      map.setView([lat, lng], 15);
+    },
+    function(err) {
+      alert('現在地を取得できませんでした。\n位置情報の許可を確認してください。');
+      stopTracking();
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+
+  // Watch position continuously
+  watchId = navigator.geolocation.watchPosition(
+    function(pos) {
+      updateLocationMarker(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+    },
+    function() {},
+    { enableHighAccuracy: true, maximumAge: 5000 }
+  );
+}
+
+function stopTracking() {
+  isTracking = false;
+  locateBtn.classList.remove('tracking');
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  if (locationMarker) {
+    map.removeLayer(locationMarker);
+    map.removeLayer(locationCircle);
+    locationMarker = null;
+    locationCircle = null;
+  }
+}
+
+locateBtn.addEventListener('click', function(e) {
+  e.stopPropagation();
+  if (isTracking) {
+    stopTracking();
+  } else {
+    startTracking();
+  }
+});
+
+// Handle resize
+window.addEventListener('resize', function() {
+  location.reload();
+});
+</script>
+</body>
+</html>
